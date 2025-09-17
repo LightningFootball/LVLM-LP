@@ -122,9 +122,9 @@ def truncate_dataset(dataset_dir, dataset_name, truncate_ratio=0.1):
     json_file = Path(dataset_dir) / f"{dataset_name}.json"
     image_dir = Path(dataset_dir) / dataset_name
 
-    # Create output directories
-    output_json = Path(dataset_dir) / f"{dataset_name}_10percent.json"
-    output_dir = Path(dataset_dir) / f"{dataset_name}_10percent"
+    # Use original names for output (no backup needed)
+    output_json = json_file
+    output_dir = image_dir
 
     if not json_file.exists():
         print(f"JSON file {json_file} not found!")
@@ -144,37 +144,39 @@ def truncate_dataset(dataset_dir, dataset_name, truncate_ratio=0.1):
     target_count = int(original_count * truncate_ratio)
 
     print(f"Original data count: {original_count}")
-    print(f"Target count (10%): {target_count}")
+    print(f"Target count ({truncate_ratio*100}%): {target_count}")
 
     # Truncate data
     truncated_data = data[:target_count]
 
-    # Save truncated JSON
+    # Save truncated JSON (overwrite original)
     with open(output_json, 'w', encoding='utf-8') as f:
         json.dump(truncated_data, f, ensure_ascii=False, indent=2)
 
-    print(f"Saved truncated JSON to: {output_json}")
+    print(f"Updated {output_json} with truncated data")
 
-    # Create output image directory
-    output_dir.mkdir(exist_ok=True)
-
-    # Copy corresponding images
-    copied_count = 0
-    missing_images = []
-
+    # Get list of images to keep
+    images_to_keep = set()
     for item in truncated_data:
         image_name = item.get('image', '')
         if image_name:
-            src_path = image_dir / image_name
-            dst_path = output_dir / image_name
+            images_to_keep.add(image_name)
 
-            if src_path.exists():
-                shutil.copy2(src_path, dst_path)
-                copied_count += 1
-            else:
-                missing_images.append(image_name)
+    # Remove unwanted images from original directory
+    removed_count = 0
+    missing_images = []
 
-    print(f"Copied {copied_count} images to: {output_dir}")
+    for image_file in list(image_dir.glob('*')):
+        if image_file.is_file() and image_file.name not in images_to_keep:
+            image_file.unlink()
+            removed_count += 1
+
+    # Check for missing images
+    for image_name in images_to_keep:
+        if not (image_dir / image_name).exists():
+            missing_images.append(image_name)
+
+    print(f"Kept {len(images_to_keep)} images, removed {removed_count} images from: {output_dir}")
 
     if missing_images:
         print(f"Warning: {len(missing_images)} images were missing:")
@@ -185,8 +187,8 @@ def truncate_dataset(dataset_dir, dataset_name, truncate_ratio=0.1):
 
 def main():
     parser = argparse.ArgumentParser(description='Download, setup and truncate VizWiz dataset')
-    parser.add_argument('--data-dir', default='./data',
-                        help='Path to data directory (default: ./data)')
+    parser.add_argument('--data-dir', default='/data',
+                        help='Path to data directory (default: /data)')
     parser.add_argument('--datasets', nargs='+', default=['val', 'train', 'test'],
                         help='Dataset names to process for truncation')
     parser.add_argument('--ratio', type=float, default=0.1,
