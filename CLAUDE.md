@@ -17,6 +17,7 @@ This is a research codebase for "The First to Know: How Token Distributions Reve
 - **`scripts/`**: Shell scripts organized by task for running models on different datasets
 - **`assignment/`**: Contains assignment guidance PDF files
 - **`custom/`**: Custom scripts and utilities
+- **`environment_setup/`**: Environment setup packages and configurations for reproducible deployments
 - **Jupyter notebooks**: `Task{1-6}_*.ipynb` files for evaluating linear probing performance
 
 ### Data Flow
@@ -78,6 +79,33 @@ dataset_roots = {
     "ImageNet": "/path/to/ImageNet/"
 }
 ```
+
+## Environment Setup
+
+### Quick Setup (Recommended)
+Use the automated setup package in `environment_setup/llava/`:
+
+```bash
+# Navigate to setup directory
+cd environment_setup/llava/
+
+# Run automated setup
+sudo bash quick_setup.sh
+```
+
+### Manual Setup Options
+```bash
+# Option 1: Conda environment
+conda env create -f environment_setup/llava/environment.yml
+conda activate llava
+
+# Option 2: Pip installation
+conda create -n llava python=3.10 -y
+conda activate llava
+pip install -r environment_setup/llava/requirements.txt
+```
+
+See `environment_setup/llava/README_SETUP.md` for detailed instructions and troubleshooting.
 
 ## Model Setup
 
