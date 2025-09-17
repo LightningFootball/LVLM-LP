@@ -2,10 +2,32 @@
 """
 Script to download, setup and truncate VizWiz dataset.
 Downloads VizWiz dataset, extracts files, and truncates to specified ratio.
+
+Usage:
+    # Basic usage - download, extract and truncate to 10%
+    python truncate_vizwiz_dataset.py --data-dir /data --ratio 0.1
+
+    # Only download and extract, skip truncation
+    python truncate_vizwiz_dataset.py --data-dir /data --download-only
+
+    # Only truncate existing dataset (skip download)
+    python truncate_vizwiz_dataset.py --data-dir /data --truncate-only --ratio 0.1
+
+    # Truncate specific datasets
+    python truncate_vizwiz_dataset.py --data-dir /data --datasets val train --ratio 0.2
+
+    # Skip dependency installation (if already installed)
+    python truncate_vizwiz_dataset.py --data-dir /data --skip-install
+
+Features:
+    - Preserves downloaded zip files for reuse
+    - Creates 'original' backup of extracted files
+    - Skips download/extraction if already completed
+    - Parallel downloading for faster speed
+    - Supports multiple truncation ratios
 """
 
 import json
-import os
 import shutil
 import argparse
 import subprocess
@@ -52,7 +74,7 @@ def download_file(url, output_dir):
 
 def download_vizwiz_dataset(data_dir):
     """
-    Download all VizWiz dataset files in parallel
+    Download all VizWiz dataset files in parallel (skip if already exists)
     """
     vizwiz_dir = data_dir / "VizWiz"
     vizwiz_dir.mkdir(parents=True, exist_ok=True)
@@ -63,6 +85,21 @@ def download_vizwiz_dataset(data_dir):
         "https://vizwiz.cs.colorado.edu/VizWiz_final/images/test.zip",
         "https://vizwiz.cs.colorado.edu/VizWiz_final/vqa_data/Annotations.zip"
     ]
+
+    # Check if all files already exist
+    all_files_exist = True
+    expected_files = []
+    for url in urls:
+        filename = url.split('/')[-1]
+        file_path = vizwiz_dir / filename
+        expected_files.append(file_path)
+        if not file_path.exists():
+            all_files_exist = False
+            break
+
+    if all_files_exist:
+        print("All zip files already downloaded, skipping download...")
+        return expected_files, vizwiz_dir
 
     print(f"Downloading VizWiz dataset to {vizwiz_dir}")
     print("Starting parallel downloads...")
@@ -85,29 +122,61 @@ def download_vizwiz_dataset(data_dir):
 
 def extract_files(downloaded_files, vizwiz_dir):
     """
-    Extract all downloaded zip files
+    Extract all downloaded zip files and create original backup
     """
     print("Extracting downloaded files...")
+
+    # Create original backup directory
+    original_dir = vizwiz_dir / "original"
+    original_dir.mkdir(exist_ok=True)
 
     for file_path in downloaded_files:
         if file_path and file_path.suffix == '.zip':
             print(f"Extracting {file_path.name}...")
             try:
-                subprocess.run(['unzip', '-o', str(file_path), '-d', str(vizwiz_dir)], check=True)
-                print(f"Successfully extracted {file_path.name}")
-                # Remove zip file after extraction
-                file_path.unlink()
+                # Extract to original directory first
+                subprocess.run(['unzip', '-o', str(file_path), '-d', str(original_dir)], check=True)
+                print(f"Successfully extracted {file_path.name} to original/")
+                # Do NOT remove zip file - keep for reuse
             except subprocess.CalledProcessError as e:
                 print(f"Error extracting {file_path.name}: {e}")
 
-    # Move annotation files to the correct location
-    annotations_dir = vizwiz_dir / "Annotations"
+    # Move annotation files to the correct location in original
+    annotations_dir = original_dir / "Annotations"
     if annotations_dir.exists():
         for json_file in annotations_dir.glob("*.json"):
-            shutil.move(str(json_file), str(vizwiz_dir / json_file.name))
+            shutil.move(str(json_file), str(original_dir / json_file.name))
         # Remove empty annotations directory
         if annotations_dir.exists() and not any(annotations_dir.iterdir()):
             annotations_dir.rmdir()
+
+    # Copy original files to working directory
+    copy_original_to_working(vizwiz_dir)
+
+def copy_original_to_working(vizwiz_dir):
+    """
+    Copy files from original backup to working directory
+    """
+    original_dir = vizwiz_dir / "original"
+    if not original_dir.exists():
+        print("Original backup directory not found!")
+        return
+
+    print("Copying original files to working directory...")
+
+    # Copy all directories and files from original to working
+    for item in original_dir.iterdir():
+        dest_path = vizwiz_dir / item.name
+        if item.is_dir():
+            if dest_path.exists():
+                shutil.rmtree(dest_path)
+            shutil.copytree(item, dest_path)
+        else:
+            if dest_path.exists():
+                dest_path.unlink()
+            shutil.copy2(item, dest_path)
+
+    print("Files copied from original backup")
 
 def truncate_dataset(dataset_dir, dataset_name, truncate_ratio=0.1):
     """
@@ -217,7 +286,14 @@ def main():
     # Step 2: Download and extract dataset (unless truncate-only)
     if not args.truncate_only:
         downloaded_files, vizwiz_dir = download_vizwiz_dataset(data_dir)
-        if downloaded_files:
+
+        # Check if original backup already exists
+        original_dir = vizwiz_dir / "original"
+        if original_dir.exists() and any(original_dir.iterdir()):
+            print("Original backup already exists, skipping extraction...")
+            # Still copy to working directory
+            copy_original_to_working(vizwiz_dir)
+        elif downloaded_files:
             extract_files(downloaded_files, vizwiz_dir)
             print("Dataset download and extraction completed!")
         else:
@@ -235,6 +311,15 @@ def main():
         print(f"VizWiz directory not found at {vizwiz_dir}")
         print("Please run without --truncate-only first to download the dataset")
         return
+
+    # If truncate-only, make sure to copy from original backup first
+    if args.truncate_only:
+        original_dir = vizwiz_dir / "original"
+        if original_dir.exists() and any(original_dir.iterdir()):
+            print("Restoring files from original backup before truncation...")
+            copy_original_to_working(vizwiz_dir)
+        else:
+            print("Warning: Original backup not found. Truncating existing files.")
 
     print("Starting dataset truncation...")
     print(f"Processing datasets: {args.datasets}")
