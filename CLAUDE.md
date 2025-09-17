@@ -110,3 +110,8 @@ After running models, use corresponding `Task{N}_*.ipynb` notebooks to:
 2. Train linear probing classifiers
 3. Evaluate performance metrics
 4. Compare against finetuning baselines
+
+## Git Commit Guidelines
+
+- Do NOT include AI-generated attribution lines in commit messages
+- Keep commit messages clean and professional without mentioning Claude Code or Co-Authored-By lines
